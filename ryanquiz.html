@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>my hero utlra rumble quiz</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background:#1a1c22;
+    color:#e6e6e6;
+    text-align:center;
+    margin:0;
+}
+
+#splash {
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:#14161b;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    z-index:999;
+    padding:20px;
+}
+
+#splash h1 { font-size:28px; }
+
+#splash p {
+    max-width:520px;
+    color:#a1a1aa;
+}
+    #splashImg {
+    width: 100%;
+    max-width: 900px;
+    max-height: 60vh;
+    object-fit: contain;
+    border-radius: 14px;
+    background: #2a2d36;
+}
+
+.container {
+    max-width:640px;
+    margin:auto;
+    padding:20px;
+    background:#20232a;
+    border-radius:14px;
+    margin-top:40px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35);
+}
+
+img {
+    width: 100%;
+    max-height: 320px;
+    object-fit: contain;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    background: #2a2d36;
+    border: none; 
+}
+
+input {
+    padding:10px;
+    border-radius:10px;
+    border:none;
+    background:#2a2d36;
+    color:#e6e6e6;
+    width:70%;
+    font-size:16px;
+}
+
+button {
+    cursor:pointer;
+    background:#b91c1c;
+    color:white;
+    padding:10px 14px;
+    border-radius:10px;
+    border:none;
+    margin:5px;
+    font-size:16px;
+}
+
+button:hover { background:#7f1d1d; }
+
+.topbar {
+    display:flex;
+    justify-content:space-between;
+    font-size:15px;
+    color:#a1a1aa;
+    margin-bottom:10px;
+}
+
+.result {
+    margin-top:15px;
+    font-size:18px;
+    min-height:24px;
+}
+
+.correct { color:#22c55e; }
+.wrong { color:#ef4444; }
+
+.hidden { display:none; }
+</style>
+</head>
+
+<body>
+
+<div id="splash">
+    <h1>My Hero Ultra Rumble Quiz</h1>
+    <img src="https://github.com/rob306random/ryanmyheroquiz/blob/main/classroom.jpg?raw=true" id="splashImg">
+    <p>Guess what Ryan calls each character. Close enough counts.</p>
+    <button onclick="startGame()">Start Quiz</button>
+</div>
+
+<div class="container">
+
+    <div class="topbar" id="topbar">
+        <div id="progress">0 / 0</div>
+        <div id="score">Score: 0</div>
+    </div>
+
+    <h2 id="mainTitle">What name does Ryan use?</h2>
+
+    <img id="characterImage">
+
+    <input id="answerInput" placeholder="Type Ryan's name here">
+
+    <div>
+        <button id="submitBtn" onclick="submitAnswer()">Submit</button>
+    </div>
+
+    <div class="result" id="result"></div>
+
+    <button id="nextBtn" class="hidden" onclick="nextQuestion()">Next</button>
+
+    <div id="endScreen" class="hidden">
+        <h2>Quiz Complete</h2>
+        <p id="finalScore"></p>
+        <button onclick="showResults()">View Results</button>
+        <div id="breakdown" class="hidden"></div>
+        <button onclick="restartQuiz()">Restart</button>
+    </div>
+
+</div>
+
+<script>
+
+function beep(type) {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+
+    o.type = "sine";
+    o.connect(g);
+    g.connect(ctx.destination);
+
+    let duration = 0.12;
+
+    if (type === "correct") {
+        o.frequency.setValueAtTime(520, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(780, ctx.currentTime + 0.12);
+        duration = 0.15;
+    }
+
+    if (type === "wrong") {
+        o.frequency.setValueAtTime(180, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.15);
+        duration = 0.18;
+    }
+
+    if (type === "click") {
+        o.frequency.setValueAtTime(420, ctx.currentTime);
+        o.frequency.exponentialRampToValueAtTime(360, ctx.currentTime + 0.08);
+        duration = 0.08;
+    }
+
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+
+    o.start();
+    o.stop(ctx.currentTime + duration);
+}
+
+function similarity(a, b) {
+    a = a.toLowerCase();
+    b = b.toLowerCase();
+
+    let matrix = Array.from({ length: b.length + 1 }, () =>
+        Array(a.length + 1).fill(0)
+    );
+
+    for (let i = 0; i <= a.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= b.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= b.length; j++) {
+        for (let i = 1; i <= a.length; i++) {
+            if (b[j - 1] === a[i - 1]) {
+                matrix[j][i] = matrix[j - 1][i - 1];
+            } else {
+                matrix[j][i] = Math.min(
+                    matrix[j - 1][i - 1] + 1,
+                    matrix[j][i - 1] + 1,
+                    matrix[j - 1][i] + 1
+                );
+            }
+        }
+    }
+
+    let dist = matrix[b.length][a.length];
+    return 1 - dist / Math.max(a.length, b.length);
+}
+
+const characters = [
+    { image: "https://ultrarumble.com/assets/Character/Ch001/GUI/FaceIcon/T_ui_com_cahraface_Ch001.png", ryanName: "Deku" },
+    { image: "https://ultrarumble.com/assets/Character/Ch002/GUI/FaceIcon/T_ui_com_cahraface_Ch002.png", ryanName: "Bakugo" },
+    { image: "https://ultrarumble.com/assets/Character/Ch003/GUI/FaceIcon/T_ui_com_cahraface_Ch003.png", ryanName: "Space Girl" },
+    { image: "https://ultrarumble.com/assets/Character/Ch004/GUI/FaceIcon/T_ui_com_cahraface_Ch004.png", ryanName: "Fire And Ice" },
+    { image: "https://ultrarumble.com/assets/Character/Ch005/GUI/FaceIcon/T_ui_com_cahraface_Ch005.png", ryanName: "Boots" },
+    { image: "https://ultrarumble.com/assets/Character/Ch006/GUI/FaceIcon/T_ui_com_cahraface_Ch006.png", ryanName: "Frog" },
+    { image: "https://ultrarumble.com/assets/Character/Ch007/GUI/FaceIcon/T_ui_com_cahraface_Ch007.png", ryanName: "Lightning" },
+    { image: "https://ultrarumble.com/assets/Character/Ch008/GUI/FaceIcon/T_ui_com_cahraface_Ch008.png", ryanName: "Red Ranger" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch010/GUI/FaceIcon/T_ui_com_cahraface_Ch010.png", ryanName: "Momo" },
+    { image: "https://ultrarumble.com/assets/Character/Ch011/GUI/FaceIcon/T_ui_com_cahraface_Ch011.png", ryanName: "Hawks" },
+    { image: "https://ultrarumble.com/assets/Character/Ch012/GUI/FaceIcon/T_ui_com_cahraface_Ch012.png", ryanName: "All Might" },
+    { image: "https://ultrarumble.com/assets/Character/Ch013/GUI/FaceIcon/T_ui_com_cahraface_Ch013.png", ryanName: "Bandages" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch015/GUI/FaceIcon/T_ui_com_cahraface_Ch015.png", ryanName: "Shiggy" },
+    { image: "https://ultrarumble.com/assets/Character/Ch016/GUI/FaceIcon/T_ui_com_cahraface_Ch016.png", ryanName: "All For One" },
+    { image: "https://ultrarumble.com/assets/Character/Ch017/GUI/FaceIcon/T_ui_com_cahraface_Ch017.png", ryanName: "Dobi" },
+    { image: "https://ultrarumble.com/assets/Character/Ch018/GUI/FaceIcon/T_ui_com_cahraface_Ch018.png", ryanName: "Toga" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch023/GUI/FaceIcon/T_ui_com_cahraface_Ch023.png", ryanName: "Flames" },
+    { image: "https://ultrarumble.com/assets/Character/Ch024/GUI/FaceIcon/T_ui_com_cahraface_Ch024.png", ryanName: "Mirio" },
+    { image: "https://ultrarumble.com/assets/Character/Ch025/GUI/FaceIcon/T_ui_com_cahraface_Ch025.png", ryanName: "Fairy" },
+    { image: "https://ultrarumble.com/assets/Character/Ch026/GUI/FaceIcon/T_ui_com_cahraface_Ch026.png", ryanName: "Octopus" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch034/GUI/FaceIcon/T_ui_com_cahraface_Ch034.png", ryanName: "Outbreak" },
+    { image: "https://ultrarumble.com/assets/Character/Ch037/GUI/FaceIcon/T_ui_com_cahraface_Ch037.png", ryanName: "Twice" },
+    { image: "https://ultrarumble.com/assets/Character/Ch038/GUI/FaceIcon/T_ui_com_cahraface_Ch038.png", ryanName: "Trucks" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch043/GUI/FaceIcon/T_ui_com_cahraface_Ch043.png", ryanName: "Hawks" },
+    { image: "https://ultrarumble.com/assets/Character/Ch046/GUI/FaceIcon/T_ui_com_cahraface_Ch046.png", ryanName: "Hands" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch100/GUI/FaceIcon/T_ui_com_cahraface_Ch100.png", ryanName: "Mt Lady" },
+    { image: "https://ultrarumble.com/assets/Character/Ch101/GUI/FaceIcon/T_ui_com_cahraface_Ch101.png", ryanName: "Cementoss" },
+    { image: "https://ultrarumble.com/assets/Character/Ch102/GUI/FaceIcon/T_ui_com_cahraface_Ch102.png", ryanName: "Vines" },
+    { image: "https://ultrarumble.com/assets/Character/Ch103/GUI/FaceIcon/T_ui_com_cahraface_Ch103.png", ryanName: "Portals" },
+    { image: "https://ultrarumble.com/assets/Character/Ch104/GUI/FaceIcon/T_ui_com_cahraface_Ch104.png", ryanName: "Clone" },
+    { image: "https://ultrarumble.com/assets/Character/Ch105/GUI/FaceIcon/T_ui_com_cahraface_Ch105.png", ryanName: "Hypnotist" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch109/GUI/FaceIcon/T_ui_com_cahraface_Ch109.png", ryanName: "Mic" },
+    { image: "https://ultrarumble.com/assets/Character/Ch114/GUI/FaceIcon/T_ui_com_cahraface_Ch114.png", ryanName: "America" },
+    { image: "https://ultrarumble.com/assets/Character/Ch115/GUI/FaceIcon/T_ui_com_cahraface_Ch115.png", ryanName: "Nagant" },
+
+    { image: "https://ultrarumble.com/assets/Character/Ch200/GUI/FaceIcon/T_ui_com_cahraface_Ch200.png", ryanName: "Super All Might" },
+    { image: "https://ultrarumble.com/assets/Character/Ch201/GUI/FaceIcon/T_ui_com_cahraface_Ch201.png", ryanName: "All For One" },
+    { image: "https://ultrarumble.com/assets/Character/Ch202/GUI/FaceIcon/T_ui_com_cahraface_Ch202.png", ryanName: "Speed Deku" }
+];
+
+let shuffled = [];
+let index = 0;
+let score = 0;
+let answered = false;
+let results = [];
+let finished = false;
+
+function startGame() {
+    document.getElementById("splash").style.display = "none";
+    startQuiz();
+}
+
+function shuffle(a){
+    for(let i=a.length-1;i>0;i--){
+        let j=Math.floor(Math.random()*(i+1));
+        [a[i],a[j]]=[a[j],a[i]];
+    }
+}
+
+function startQuiz() {
+    shuffled = [...characters];
+    shuffle(shuffled);
+    index = 0;
+    score = 0;
+    results = [];
+    finished = false;
+
+    document.getElementById("topbar").style.display = "flex";
+
+    loadQuestion();
+    updateTopbar();
+}
+
+function loadQuestion() {
+    if (finished) return;
+    if (index >= shuffled.length) return endQuiz();
+
+    answered = false;
+
+    document.getElementById("endScreen").classList.add("hidden");
+    document.getElementById("characterImage").classList.remove("hidden");
+    document.getElementById("answerInput").classList.remove("hidden");
+    document.getElementById("submitBtn").classList.remove("hidden");
+    document.getElementById("nextBtn").classList.add("hidden");
+
+    document.getElementById("result").textContent = "";
+    document.getElementById("answerInput").value = "";
+    document.getElementById("characterImage").src = shuffled[index].image;
+    document.getElementById("answerInput").focus();
+}
+
+document.getElementById("answerInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter") submitAnswer();
+});
+
+function submitAnswer() {
+    if (answered || finished) return;
+
+    const input = document.getElementById("answerInput").value.trim();
+    const correct = shuffled[index].ryanName;
+
+    if (input === "") {
+        results.push({ image: shuffled[index].image, correct, user: "Skipped", result: false });
+        beep("wrong");
+        showResult("Skipped! Ryan calls this: " + correct, false);
+        answered = true;
+        document.getElementById("nextBtn").classList.remove("hidden");
+        return;
+    }
+
+    const sim = similarity(input, correct);
+    const isCorrect = sim >= 0.75;
+
+    if (isCorrect) {
+        score++;
+        beep("correct");
+        showResult("Correct!", true);
+    } else {
+        beep("wrong");
+        showResult("Wrong! Ryan calls this: " + correct, false);
+    }
+
+    results.push({
+        image: shuffled[index].image,
+        correct,
+        user: input,
+        result: isCorrect
+    });
+
+    answered = true;
+    updateTopbar();
+    document.getElementById("nextBtn").classList.remove("hidden");
+}
+
+function nextQuestion() {
+    if (finished) return;
+    index++;
+    loadQuestion();
+    updateTopbar();
+}
+
+function showResult(t,c){
+    const r=document.getElementById("result");
+    r.textContent=t;
+    r.className="result "+(c?"correct":"wrong");
+}
+
+function updateTopbar(){
+    document.getElementById("progress").textContent =
+        Math.min(index + 1, shuffled.length) + " / " + shuffled.length;
+    document.getElementById("score").textContent = "Score: " + score;
+}
+
+function endQuiz() {
+    finished = true;
+    answered = true;
+
+    document.getElementById("characterImage").classList.add("hidden");
+    document.getElementById("answerInput").classList.add("hidden");
+    document.getElementById("submitBtn").classList.add("hidden");
+    document.getElementById("nextBtn").classList.add("hidden");
+    document.getElementById("topbar").style.display = "none";
+
+    document.getElementById("result").textContent = "";
+
+    // IMPORTANT FIX: do NOT modify h2 anymore
+    document.getElementById("endScreen").classList.remove("hidden");
+    document.getElementById("finalScore").textContent =
+        "You got " + score + " / " + shuffled.length;
+}
+
+function showResults() {
+    const d = document.getElementById("breakdown");
+    d.classList.remove("hidden");
+    d.innerHTML = "<h3>Results Breakdown</h3>";
+
+    results.forEach(r => {
+        d.innerHTML += `
+        <div style="display:flex;align-items:center;gap:10px;margin:10px 0;background:#2a2d36;padding:10px;border-radius:10px;">
+            <img src="${r.image}" style="width:60px;height:60px;object-fit:contain;">
+            <div style="text-align:left;">
+                <div><b>Correct:</b> ${r.correct}</div>
+                <div><b>Your answer:</b> ${r.user}</div>
+                <div style="color:${r.result ? '#22c55e' : '#ef4444'}">
+                    ${r.result ? "Correct" : "Wrong"}
+                </div>
+            </div>
+        </div>`;
+    });
+}
+
+function restartQuiz(){
+    location.reload();
+}
+
+</script>
+
+</body>
+</html>
